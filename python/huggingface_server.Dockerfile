@@ -102,7 +102,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip uninstall -y lmcache nixl-cu12 cupy-cuda12x 2>/dev/null || true && \
     pip install nixl-cu13 cupy-cuda13x && \
-    pip install lmcache==${LMCACHE_VERSION} --no-binary lmcache --no-build-isolation --no-deps
+    pip install "lmcache @ git+https://github.com/LMCache/LMCache.git@v${LMCACHE_VERSION}" --no-build-isolation --no-deps
 
 # Use Bash with `-o pipefail` so we can leverage Bash-specific features (like `[[ … ]]` for glob tests)
 # and ensure that failures in any part of a piped command cause the build to fail immediately.
