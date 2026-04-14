@@ -104,7 +104,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install nixl-cu13 cupy-cuda13x && \
     TORCH_CUDA_ARCH_LIST="12.0" \
     pip install "lmcache @ git+https://github.com/LMCache/LMCache.git@v${LMCACHE_VERSION}" --no-build-isolation --no-deps && \
-    pip install aiofile aiofiles aiohttp awscrt blake3 msgspec numba nvtx sortedcontainers
+    pip install aiofile aiofiles aiohttp awscrt blake3 msgspec numba nvtx peft sortedcontainers
 
 # Use Bash with `-o pipefail` so we can leverage Bash-specific features (like `[[ … ]]` for glob tests)
 # and ensure that failures in any part of a piped command cause the build to fail immediately.
