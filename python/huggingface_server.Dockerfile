@@ -103,7 +103,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip uninstall -y lmcache nixl-cu12 cupy-cuda12x 2>/dev/null || true && \
     pip install nixl-cu13 cupy-cuda13x && \
     TORCH_CUDA_ARCH_LIST="12.0" \
-    pip install "lmcache @ git+https://github.com/LMCache/LMCache.git@v${LMCACHE_VERSION}" --no-build-isolation --no-deps
+    pip install "lmcache @ git+https://github.com/LMCache/LMCache.git@v${LMCACHE_VERSION}" --no-build-isolation --no-deps && \
+    pip install sortedcontainers
 
 # Use Bash with `-o pipefail` so we can leverage Bash-specific features (like `[[ … ]]` for glob tests)
 # and ensure that failures in any part of a piped command cause the build to fail immediately.
@@ -163,6 +164,8 @@ COPY --from=build ${WORKSPACE_DIR}/kserve kserve
 COPY --from=build ${WORKSPACE_DIR}/storage storage
 COPY --from=build ${WORKSPACE_DIR}/huggingfaceserver huggingfaceserver
 
+# PyTorch libs (libc10.so, libtorch_cpu.so, etc.) needed by LMCache c_ops at runtime
+ENV LD_LIBRARY_PATH="${WORKSPACE_DIR}/${VENV_PATH}/lib/python${PYTHON_VERSION}/site-packages/torch/lib:${LD_LIBRARY_PATH}"
 # Set a writable Hugging Face home folder to avoid permission issue. See https://github.com/kserve/kserve/issues/3562
 ENV HF_HOME="/tmp/huggingface"
 # https://huggingface.co/docs/safetensors/en/speed#gpu-benchmark
