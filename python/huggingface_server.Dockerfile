@@ -102,6 +102,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip uninstall -y lmcache nixl-cu12 cupy-cuda12x 2>/dev/null || true && \
     pip install nixl-cu13 cupy-cuda13x && \
+    TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0 12.0+PTX" \
     pip install "lmcache @ git+https://github.com/LMCache/LMCache.git@v${LMCACHE_VERSION}" --no-build-isolation --no-deps
 
 # Use Bash with `-o pipefail` so we can leverage Bash-specific features (like `[[ … ]]` for glob tests)
