@@ -1,4 +1,4 @@
-ARG CUDA_VERSION=12.9.1
+ARG CUDA_VERSION=13.0.0
 ARG VENV_PATH=prod_venv
 ARG PYTHON_VERSION=3.12
 ARG WORKSPACE_DIR=/kserve-workspace
@@ -8,7 +8,7 @@ ARG WORKSPACE_DIR=/kserve-workspace
 FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS base
 
 ARG WORKSPACE_DIR
-ARG CUDA_VERSION=12.9.1
+ARG CUDA_VERSION=13.0.0
 ARG PYTHON_VERSION=3.12
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -38,10 +38,10 @@ RUN ldconfig /usr/local/cuda-$(echo $CUDA_VERSION | cut -d. -f1,2)/compat/
 # can be useful for both `dev` and `test`
 # explicitly set the list to avoid issues with torch 2.2
 # see https://github.com/pytorch/pytorch/pull/123243
-ARG torch_cuda_arch_list='7.0 7.5 8.0 8.6 8.9 9.0+PTX'
+ARG torch_cuda_arch_list='7.0 7.5 8.0 8.6 8.9 9.0 12.0+PTX'
 ENV TORCH_CUDA_ARCH_LIST=${torch_cuda_arch_list}
 # Override the arch list for flash-attn to reduce the binary size
-ARG vllm_fa_cmake_gpu_arches='80-real;90-real'
+ARG vllm_fa_cmake_gpu_arches='80-real;90-real;120-real'
 ENV VLLM_FA_CMAKE_GPU_ARCHES=${vllm_fa_cmake_gpu_arches}
 
 WORKDIR ${WORKSPACE_DIR}
@@ -52,9 +52,7 @@ WORKDIR ${WORKSPACE_DIR}
 FROM base AS build
 
 ARG WORKSPACE_DIR
-ARG VLLM_VERSION=0.19.0
-ARG LMCACHE_VERSION=0.4.2
-ARG FLASHINFER_VERSION=0.6.6
+ARG LMCACHE_VERSION=0.4.3
 
 WORKDIR ${WORKSPACE_DIR}
 
@@ -81,12 +79,20 @@ RUN --mount=type=cache,target=/root/.cache/uv cd storage && uv pip install . --n
 COPY huggingfaceserver/pyproject.toml huggingfaceserver/uv.lock huggingfaceserver/health_check.py huggingfaceserver/
 RUN --mount=type=cache,target=/root/.cache/uv cd huggingfaceserver && uv sync --active --no-cache
 COPY huggingfaceserver huggingfaceserver
-RUN --mount=type=cache,target=/root/.cache/uv cd huggingfaceserver && uv sync --active --no-cache
-
-# Install vllm
+# Sync huggingfaceserver deps, then replace the stable vllm + cu12 packages (from kserve[llm])
+# with the vllm nightly + cu13 packages and transformers>=5.5.0 for Gemma 4 support.
+# Done in a single layer to avoid carrying ~15GB of orphaned cu12 libraries in the image.
+# https://github.com/vllm-project/recipes/blob/main/Google/Gemma4.md
 # https://docs.vllm.ai/en/latest/models/extensions/runai_model_streamer.html, https://docs.vllm.ai/en/latest/models/extensions/tensorizer.html
 # https://docs.vllm.ai/en/latest/models/extensions/fastsafetensor.html
-RUN --mount=type=cache,target=/root/.cache/pip pip install vllm[runai,tensorizer,fastsafetensors]==${VLLM_VERSION}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    cd huggingfaceserver && uv sync --active --no-cache && cd .. && \
+    uv pip uninstall vllm $(pip list 2>/dev/null | grep -i '^nvidia' | awk '{print $1}') 2>/dev/null || true && \
+    uv pip install -U "vllm[runai,tensorizer,fastsafetensors]" --pre \
+        --extra-index-url https://wheels.vllm.ai/nightly/cu130 \
+        --extra-index-url https://download.pytorch.org/whl/cu130 \
+        --index-strategy unsafe-best-match && \
+    uv pip install transformers==5.5.0
 
 # Install lmcache
 RUN --mount=type=cache,target=/root/.cache/pip pip install lmcache==${LMCACHE_VERSION}
@@ -95,10 +101,10 @@ RUN --mount=type=cache,target=/root/.cache/pip pip install lmcache==${LMCACHE_VE
 # and ensure that failures in any part of a piped command cause the build to fail immediately.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install flashinfer
+# Install flashinfer jit-cache for the CUDA version (cubin + flashinfer-python already installed by vllm nightly)
 # https://docs.flashinfer.ai/installation.html
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install flashinfer-cubin==${FLASHINFER_VERSION} && \
+    FLASHINFER_VERSION=$(pip show flashinfer-cubin 2>/dev/null | grep '^Version:' | awk '{print $2}') && \
     pip install flashinfer-jit-cache==${FLASHINFER_VERSION} \
         --extra-index-url https://flashinfer.ai/whl/cu$(echo ${CUDA_VERSION} | cut -d. -f1,2 | tr -d '.') && \
     flashinfer show-config
@@ -114,7 +120,7 @@ RUN mkdir -p third_party/library && python3 pip-licenses.py
 FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu22.04 AS prod
 
 ARG WORKSPACE_DIR
-ARG CUDA_VERSION=12.9.1
+ARG CUDA_VERSION=13.0.0
 ARG PYTHON_VERSION=3.12
 ENV DEBIAN_FRONTEND=noninteractive
 

@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [gemma4-cu130]
+    paths:
+      - "python/**"
+      - "docker-bake.hcl"
+      - ".forgejo/workflows/release.yaml"
+
+jobs:
+  calver:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.calver.outputs.tag }}
+    steps:
+      - name: Get CalVer tag
+        id: calver
+        run: echo "tag=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+
+  build:
+    needs: calver
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: git.mlxa.dev
+          username: ${{ github.actor }}
+          password: ${{ secrets.PACKAGE_TOKEN }}
+
+      - uses: docker/bake-action@v6
+        with:
+          push: true
+        env:
+          TAG: ${{ needs.calver.outputs.tag }}
+          REGISTRY: git.mlxa.dev/arsac/kserve
+          SOURCE: ${{ github.server_url }}/${{ github.repository }}
+
+  release:
+    needs: [calver, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: https://code.forgejo.org/actions/forgejo-release@v2
+        with:
+          tag: ${{ needs.calver.outputs.tag }}
+          title: ${{ needs.calver.outputs.tag }}
+          direction: upload
+          token: ${{ secrets.GITHUB_TOKEN }}
