@@ -94,8 +94,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --index-strategy unsafe-best-match && \
     uv pip install transformers==5.5.0
 
-# Install lmcache
-RUN --mount=type=cache,target=/root/.cache/pip pip install lmcache==${LMCACHE_VERSION}
+# Install lmcache with CUDA 13 compatible dependencies
+# The pre-built lmcache wheel from PyPI links against libcudart.so.12 which doesn't exist in cu130 images.
+# Fix: replace cu12 transitive deps with cu13 variants, then build lmcache from source.
+# https://github.com/vllm-project/vllm/issues/37801
+# https://github.com/LMCache/LMCache/issues/2843
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip uninstall -y lmcache nixl-cu12 cupy-cuda12x 2>/dev/null || true && \
+    pip install nixl-cu13 cupy-cuda13x && \
+    pip install lmcache==${LMCACHE_VERSION} --no-binary lmcache --no-build-isolation --no-deps
 
 # Use Bash with `-o pipefail` so we can leverage Bash-specific features (like `[[ … ]]` for glob tests)
 # and ensure that failures in any part of a piped command cause the build to fail immediately.
