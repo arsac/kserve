@@ -30,6 +30,8 @@ ignore-packages = [
   "nvidia-cudnn-cu13", "nvidia-cufft", "nvidia-cufile", "nvidia-curand",
   "nvidia-cusolver", "nvidia-cusparse", "nvidia-nccl-cu13", "nvidia-nvjitlink",
   "nvidia-nvtx", "nvidia-ml-py", "nvidia-cusparselt-cu13", "nvidia-nvshmem-cu13",
+  # cu13 lmcache dependencies
+  "nixl-cu13", "cupy-cuda13x", "cufile-python",
   # Intel EULA
   "intel-openmp", "intel-cmplr-lib-ur",
   # Intel Simplified Software License
