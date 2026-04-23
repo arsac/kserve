@@ -114,7 +114,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install nixl-cu13 cupy-cuda13x && \
     TORCH_CUDA_ARCH_LIST="12.0" \
     pip install "lmcache @ git+https://github.com/oceanplexian/LMCache.git@fix/hybrid-kv-cache-hma-support" --no-build-isolation --no-deps && \
-    pip install aiofile aiofiles aiohttp awscrt blake3 msgspec numba nvtx peft sortedcontainers
+    pip install aiofile aiofiles aiohttp awscrt blake3 msgspec numba nvtx peft sortedcontainers && \
+    python3 -c "import vllm.distributed.kv_transfer.kv_connector.v1.lmcache_connector as m; p=m.__file__; s=open(p).read(); s=s.replace('from vllm.distributed.kv_transfer.kv_connector.v1.base import (','from vllm.distributed.kv_transfer.kv_connector.v1.base import (\n    SupportsHMA,'); s=s.replace('class LMCacheConnectorV1(KVConnectorBase_V1):','class LMCacheConnectorV1(KVConnectorBase_V1, SupportsHMA):'); s=s.replace('        return self._lmcache_engine.request_finished(request, block_ids)\n','        return self._lmcache_engine.request_finished(request, block_ids)\n\n    def request_finished_all_groups(self, request, block_ids):\n        flat_ids = [bid for group in block_ids for bid in group]\n        return self._lmcache_engine.request_finished(request, flat_ids)\n'); open(p,'w').write(s); print(f'Patched {p}')"
 
 # Use Bash with `-o pipefail` so we can leverage Bash-specific features (like `[[ … ]]` for glob tests)
 # and ensure that failures in any part of a piped command cause the build to fail immediately.
