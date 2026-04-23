@@ -105,20 +105,16 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Fix: replace cu12 transitive deps with cu13 variants, then build lmcache from source.
 # https://github.com/vllm-project/vllm/issues/37801
 # https://github.com/LMCache/LMCache/issues/2843
+# Install lmcache from PR #2863 branch which adds SupportsHMA support for
+# vLLM's hybrid KV cache manager. This enables sliding-window layers (like
+# Gemma 4) to allocate only their window size instead of full context.
+# https://github.com/LMCache/LMCache/pull/2863
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip uninstall -y lmcache nixl-cu12 cupy-cuda12x 2>/dev/null || true && \
     pip install nixl-cu13 cupy-cuda13x && \
     TORCH_CUDA_ARCH_LIST="12.0" \
-    pip install "lmcache @ git+https://github.com/LMCache/LMCache.git@v${LMCACHE_VERSION}" --no-build-isolation --no-deps && \
+    pip install "lmcache @ git+https://github.com/oceanplexian/LMCache.git@fix/hybrid-kv-cache-hma-support" --no-build-isolation --no-deps && \
     pip install aiofile aiofiles aiohttp awscrt blake3 msgspec numba nvtx peft sortedcontainers
-
-# Patch LMCache connector to support vLLM's hybrid KV cache manager (HMA).
-# Gemma 4 has sliding-window + full-attention layers. Without HMA, vLLM
-# allocates full-context KV for all layers, wasting ~10x memory.
-# LMCache PR #2863 is pending; this is the minimal SupportsHMA patch.
-# https://github.com/LMCache/LMCache/pull/2863
-COPY huggingfaceserver/patch_hma.py patch_hma.py
-RUN python3 patch_hma.py
 
 # Use Bash with `-o pipefail` so we can leverage Bash-specific features (like `[[ … ]]` for glob tests)
 # and ensure that failures in any part of a piped command cause the build to fail immediately.
