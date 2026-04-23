@@ -61,6 +61,12 @@ RUN python3 -m venv ${VENV_PATH}
 # Activate virtual env by setting VIRTUAL_ENV
 ENV VIRTUAL_ENV=${WORKSPACE_DIR}/${VENV_PATH}
 ENV PATH="${WORKSPACE_DIR}/${VENV_PATH}/bin:$PATH"
+# Prevent uv from hardlinking files from the BuildKit cache mount.
+# On overlay2, uv defaults to Clone which falls back to Hardlink.
+# When the cache mount is detached after the RUN layer commits,
+# hardlinked .py files become 0-byte. Copy mode avoids this.
+# https://docs.astral.sh/uv/guides/integration/docker/#caching
+ENV UV_LINK_MODE=copy
 
 # From this point, all Python packages will be installed in the virtual environment and copied to the final image
 
