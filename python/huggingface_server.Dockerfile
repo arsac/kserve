@@ -112,6 +112,47 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install "lmcache @ git+https://github.com/LMCache/LMCache.git@v${LMCACHE_VERSION}" --no-build-isolation --no-deps && \
     pip install aiofile aiofiles aiohttp awscrt blake3 msgspec numba nvtx peft sortedcontainers
 
+# Patch LMCache connector to support vLLM's hybrid KV cache manager (HMA).
+# Gemma 4 has sliding-window + full-attention layers. Without HMA, vLLM
+# allocates full-context KV for all layers, wasting ~10x memory.
+# LMCache PR #2863 is pending; this is the minimal SupportsHMA patch.
+# https://github.com/LMCache/LMCache/pull/2863
+RUN CONNECTOR=$(python3 -c "import lmcache.integration.vllm.lmcache_connector_v1 as m; print(m.__file__)") && \
+    python3 -c "
+import re, sys
+path = sys.argv[1]
+with open(path) as f:
+    src = f.read()
+# Add SupportsHMA import
+src = src.replace(
+    'from vllm.distributed.kv_transfer.kv_connector.v1.base import (\n    KVConnectorBase_V1,',
+    'from vllm.distributed.kv_transfer.kv_connector.v1.base import (\n    KVConnectorBase_V1,\n    SupportsHMA,',
+)
+# Add SupportsHMA to class bases
+src = src.replace(
+    'class LMCacheConnectorV1Dynamic(KVConnectorBase_V1):',
+    'class LMCacheConnectorV1Dynamic(KVConnectorBase_V1, SupportsHMA):',
+)
+# Add request_finished_all_groups method after request_finished
+src = src.replace(
+    '        return self._lmcache_engine.request_finished(request, block_ids)\n',
+    '''        return self._lmcache_engine.request_finished(request, block_ids)
+
+    def request_finished_all_groups(
+        self,
+        request: \"Request\",
+        block_ids: tuple[list[int], ...],
+    ) -> tuple[bool, dict[str, Any] | None]:
+        \"\"\"HMA support: flatten multi-group block IDs and delegate.\"\"\"
+        flat_ids = [bid for group in block_ids for bid in group]
+        return self._lmcache_engine.request_finished(request, flat_ids)
+''',
+)
+with open(path, 'w') as f:
+    f.write(src)
+print(f'Patched {path} with SupportsHMA support')
+" "$CONNECTOR"
+
 # Use Bash with `-o pipefail` so we can leverage Bash-specific features (like `[[ … ]]` for glob tests)
 # and ensure that failures in any part of a piped command cause the build to fail immediately.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
