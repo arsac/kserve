@@ -130,8 +130,7 @@ WORKDIR ${WORKSPACE_DIR}
 FROM base AS build
 
 ARG WORKSPACE_DIR
-ARG VLLM_VERSION=0.20.0
-ARG LMCACHE_VERSION=0.4.4
+ARG VLLM_VERSION=0.22.1
 
 WORKDIR ${WORKSPACE_DIR}
 
@@ -168,8 +167,9 @@ RUN --mount=type=cache,target=/root/.cache/uv cd huggingfaceserver && uv sync --
 # https://docs.vllm.ai/en/latest/models/extensions/fastsafetensor.html
 RUN --mount=type=cache,target=/root/.cache/uv uv pip install vllm[runai,tensorizer,fastsafetensors]==${VLLM_VERSION}
 
-# Install lmcache
-RUN --mount=type=cache,target=/root/.cache/uv uv pip install lmcache==${LMCACHE_VERSION}
+# lmcache install removed: this image uses vLLM's native OffloadingConnector
+# (SupportsHMA in 0.22.1) for HMA-correct CPU KV offload, not lmcache. lmcache
+# 0.4.4 also links cu12 libs that break on the CUDA 13.2 base (LMCache#2843).
 
 # Generate third-party licenses
 COPY pyproject.toml pyproject.toml
