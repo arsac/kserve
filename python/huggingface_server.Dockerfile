@@ -180,10 +180,25 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip uninstall nixl-cu12 || true && \
     uv pip install nixl-cu13
 
-# Build-time smoke tests: fail the BUILD (not the cluster) on the two
-# regressions that took 2026.06.09-gpu down --
-#   import nixl_ep                 -> the cu13 nixl / libcudart.so.13 swap
-#   import ...models.gemma4_mm     -> transformers gemma4 support
+# flashinfer AOT jit-cache, version-matched to the flashinfer-cubin vllm pulled.
+# Generative models JIT a sampling kernel at runtime, but the prod image has no
+# nvcc (-> "nvcc: not found" building -gencode arch=compute_120f), so the sm_120
+# kernels must ship as an AOT cache. Only a cu130 wheel index exists; cu130
+# wheels are minor-version compatible with the CUDA 13.2 runtime. (The reranker
+# doesn't sample so it was unaffected; generative LLMs need this.)
+# https://docs.flashinfer.ai/installation.html
+RUN --mount=type=cache,target=/root/.cache/uv \
+    FLASHINFER_VERSION=$(uv pip show flashinfer-cubin | grep '^Version:' | awk '{print $2}') && \
+    uv pip install flashinfer-jit-cache==${FLASHINFER_VERSION} \
+        --extra-index-url https://flashinfer.ai/whl/cu130 && \
+    flashinfer show-config
+
+# Build-time smoke tests: fail the BUILD (not the cluster) on the regressions
+# that crashed earlier tags --
+#   import nixl_ep              -> the cu13 nixl / libcudart.so.13 swap
+#   import ...models.gemma4_mm  -> transformers gemma4 support
+# flashinfer-jit-cache presence is gated by the version-matched install above;
+# a true generate test needs a GPU runner, which this no-GPU CI build lacks.
 RUN python3 -c "import nixl_ep" \
     && python3 -c "import vllm.model_executor.models.gemma4_mm"
 
